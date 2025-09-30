@@ -64,3 +64,15 @@ if type(_G) == "table" then
 end
 
 print("[FindSeverRare_Discord.lua] Hook thành công. Chỉ báo webhook khi phát hiện vật phẩm.")
+for _, plr in ipairs(Players:GetPlayers()) do
+    if plr ~= localPlayer then
+        local backpack = plr:FindFirstChild("Backpack")
+        if backpack then
+            for _, item in ipairs(backpack:GetChildren()) do
+                if validItems[item.Name] then
+                    sendDiscordWebhook("🎒 Player inventory", plr.Name.." có: "..item.Name)
+                end
+            end
+        end
+    end
+end
