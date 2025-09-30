@@ -1,5 +1,5 @@
 -- FindSeverRare_Discord.lua
--- Chỉ gửi webhook khi FindSeverRare.lua phát hiện Rare Box / Ultra Rare Box / Fruit hiếm
+-- Chỉ gửi webhook khi script gốc báo "Server có trái hiếm"
 
 local HttpService = game:GetService("HttpService")
 local Players = game:GetService("Players")
@@ -43,13 +43,13 @@ local function sendDiscordWebhook(title, description)
 end
 
 --------------------------------------------------------------------
--- Hook lại RareFound từ script gốc
+-- Hook vào _G.RareFound (script gốc sẽ gọi khi phát hiện vật phẩm)
 --------------------------------------------------------------------
 if type(_G) == "table" then
     local old = _G.RareFound
 
     _G.RareFound = function(itemName, ...)
-        -- Danh sách vật phẩm cần thông báo
+        -- Chỉ gửi webhook khi script phát hiện Rare/Ultra Box hoặc Fruit
         local validItems = {
             ["Rare Box"] = true,
             ["Ultra Rare Box"] = true,
@@ -61,13 +61,17 @@ if type(_G) == "table" then
         }
 
         if itemName and validItems[tostring(itemName)] then
-            sendDiscordWebhook("🎉 Rare Item Detected!", "Script gốc phát hiện: **"..tostring(itemName).."**")
+            sendDiscordWebhook(
+                "🎉 Server có trái hiếm!",
+                "Script gốc phát hiện: **"..tostring(itemName).."**"
+            )
         end
 
-        -- Gọi lại hàm gốc (nếu có)
+        -- Gọi lại hàm gốc
         if type(old) == "function" then
             return old(itemName, ...)
         end
     end
 end
-print("[FindSeverRare_Discord.lua] Đã hook vào RareFound (sẽ chỉ báo khi có vật phẩm hiếm).")
+
+print("[FindSeverRare_Discord.lua] Hook thành công. Webhook chỉ báo khi phát hiện vật phẩm hiếm.")
