@@ -1,14 +1,16 @@
 -- FindSeverRare_Discord.lua
--- Phiên bản có webhook + gửi tin nhắn test khi script load
+-- Chỉ gửi webhook khi FindSeverRare.lua phát hiện Rare Box / Ultra Rare Box / Fruit hiếm
 
 local HttpService = game:GetService("HttpService")
 local Players = game:GetService("Players")
 local localPlayer = Players.LocalPlayer
 
--- Cấu hình webhook (của bạn)
+-- Webhook của bạn
 local WEBHOOK_URL = "https://discord.com/api/webhooks/1422372427886755861/yWe3oPd3AoAzW3EsllVkkncmz6fFTX4TDyRS0bGnJ_WnrkcAWavotHKfH0O-uwxgyA-R"
 
+--------------------------------------------------------------------
 -- Hàm gửi webhook
+--------------------------------------------------------------------
 local function sendDiscordWebhook(title, description)
     local jobId = game.JobId or HttpService:GenerateGUID(false)
     local placeId = game.PlaceId or 0
@@ -18,7 +20,8 @@ local function sendDiscordWebhook(title, description)
         username = "RareFinder",
         embeds = {{
             title = title,
-            description = (description or "") .. "\n\n**JobId:** `"..jobId.."`\n[Join Server]("..link..")",
+            description = (description or "") ..
+                "\n\n**JobId:** `"..jobId.."`\n[Join Server]("..link..")",
             footer = { text = "Auto alert" },
             timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ")
         }}
@@ -37,51 +40,34 @@ local function sendDiscordWebhook(title, description)
             HttpService:PostAsync(WEBHOOK_URL, body, Enum.HttpContentType.ApplicationJson)
         end)
     end
-
-    if setclipboard then pcall(function() setclipboard(jobId) end) end
 end
 
--- Hàm check tên object rare/rarebox
-local PATTERNS = {"rare", "rarebox", "Rare", "RareBox"}
-local function nameMatches(name)
-    if not name then return false end
-    name = tostring(name)
-    for _, pat in ipairs(PATTERNS) do
-        if string.find(name:lower(), pat:lower(), 1, true) then
-            return true
-        end
-    end
-    return false
-end
-
--- Scanner workspace
-spawn(function()
-    while true do
-        for _, obj in ipairs(workspace:GetDescendants()) do
-            local ok, n = pcall(function() return obj.Name end)
-            if ok and n and nameMatches(n) then
-                local desc = "Detected object: "..(obj.GetFullName and obj:GetFullName() or tostring(obj)).." (Class: "..tostring(obj.ClassName)..")"
-                sendDiscordWebhook("Rare Detected!", desc)
-                wait(2)
-            end
-        end
-        wait(1)
-    end
-end)
-
--- Hook nếu script gốc gọi _G.RareFound(name)
+--------------------------------------------------------------------
+-- Hook lại RareFound từ script gốc
+--------------------------------------------------------------------
 if type(_G) == "table" then
     local old = _G.RareFound
-    _G.RareFound = function(...)
-        local args = {...}
-        pcall(function()
-            sendDiscordWebhook("Rare Detected (_G.RareFound)", "Script gốc phát hiện: "..tostring(args[1] or "unknown"))
-        end)
-        if type(old) == "function" then return old(...) end
+
+    _G.RareFound = function(itemName, ...)
+        -- Danh sách vật phẩm cần thông báo
+        local validItems = {
+            ["Rare Box"] = true,
+            ["Ultra Rare Box"] = true,
+            ["Rumble Fruit"] = true,
+            ["Magma Fruit"] = true,
+            ["Flare Fruit"] = true,
+            ["Gas Fruit"] = true,
+            ["Chilly Fruit"] = true,
+        }
+
+        if itemName and validItems[tostring(itemName)] then
+            sendDiscordWebhook("🎉 Rare Item Detected!", "Script gốc phát hiện: **"..tostring(itemName).."**")
+        end
+
+        -- Gọi lại hàm gốc (nếu có)
+        if type(old) == "function" then
+            return old(itemName, ...)
+        end
     end
 end
-
-print("[FindSeverRare_Discord.lua] Webhook integration loaded.")
-
--- 🔹 Gửi tin nhắn test ngay khi load
-sendDiscordWebhook("✅ Script Loaded", "Webhook đã kết nối thành công! Người chơi: **"..localPlayer.Name.."**")
+print("[FindSeverRare_Discord.lua] Đã hook vào RareFound (sẽ chỉ báo khi có vật phẩm hiếm).")
