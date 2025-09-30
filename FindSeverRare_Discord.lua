@@ -1,11 +1,11 @@
 -- FindSeverRare_Discord.lua
--- Chỉ gửi webhook khi script gốc báo "Server có trái hiếm"
+-- Hook script gốc FindSeverRare.lua, gửi webhook khi phát hiện vật phẩm
 
 local HttpService = game:GetService("HttpService")
 local Players = game:GetService("Players")
 local localPlayer = Players.LocalPlayer
 
--- Webhook của bạn
+-- Webhook Discord của bạn
 local WEBHOOK_URL = "https://discord.com/api/webhooks/1422372427886755861/yWe3oPd3AoAzW3EsllVkkncmz6fFTX4TDyRS0bGnJ_WnrkcAWavotHKfH0O-uwxgyA-R"
 
 --------------------------------------------------------------------
@@ -20,7 +20,7 @@ local function sendDiscordWebhook(title, description)
         username = "RareFinder",
         embeds = {{
             title = title,
-            description = (description or "") ..
+            description = (description or "")..
                 "\n\n**JobId:** `"..jobId.."`\n[Join Server]("..link..")",
             footer = { text = "Auto alert" },
             timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ")
@@ -43,35 +43,24 @@ local function sendDiscordWebhook(title, description)
 end
 
 --------------------------------------------------------------------
--- Hook vào _G.RareFound (script gốc sẽ gọi khi phát hiện vật phẩm)
+-- Hook vào hàm RareFound của script gốc
 --------------------------------------------------------------------
 if type(_G) == "table" then
     local old = _G.RareFound
 
     _G.RareFound = function(itemName, ...)
-        -- Chỉ gửi webhook khi script phát hiện Rare/Ultra Box hoặc Fruit
-        local validItems = {
-            ["Rare Box"] = true,
-            ["Ultra Rare Box"] = true,
-            ["Rumble Fruit"] = true,
-            ["Magma Fruit"] = true,
-            ["Flare Fruit"] = true,
-            ["Gas Fruit"] = true,
-            ["Chilly Fruit"] = true,
-        }
-
-        if itemName and validItems[tostring(itemName)] then
+        if itemName then
             sendDiscordWebhook(
-                "🎉 Server có trái hiếm!",
-                "Script gốc phát hiện: **"..tostring(itemName).."**"
+                "🎉 Vật phẩm hiếm phát hiện!",
+                "Script gốc tìm thấy vật phẩm: **"..tostring(itemName).."**"
             )
         end
 
-        -- Gọi lại hàm gốc
+        -- Gọi lại hàm gốc nếu có
         if type(old) == "function" then
             return old(itemName, ...)
         end
     end
 end
 
-print("[FindSeverRare_Discord.lua] Hook thành công. Webhook chỉ báo khi phát hiện vật phẩm hiếm.")
+print("[FindSeverRare_Discord.lua] Hook thành công. Chỉ báo webhook khi phát hiện vật phẩm.")
