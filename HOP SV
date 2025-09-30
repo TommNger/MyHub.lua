@@ -1,21 +1,68 @@
--- Thay thế phần "hop server" hiện tại bằng đoạn này.
--- Yêu cầu: HttpService, TeleportService, và biến placeId phải có sẵn trong môi trường script.
+-- FindSeverRare_Discord.lua -- Hook script gốc FindSeverRare.lua, gửi webhook khi phát hiện vật phẩm
+-- Và quét inventory của player khác để gửi webhook nếu có trái hiếm
+
 local HttpService = game:GetService("HttpService")
-local TeleportService = game:GetService("TeleportService")
 local Players = game:GetService("Players")
+local TeleportService = game:GetService("TeleportService")
+local localPlayer = Players.LocalPlayer
 
--- Số người chơi tối thiểu để hop vào (thay đổi nếu cần)
-local MIN_PLAYERS_FOR_HOP = 10
+-- Webhook Discord của bạn
+local WEBHOOK_URL = "https://discord.com/api/webhooks/1422372427886755861/yWe3oPd3AoAzW3EsllVkkncmz6fFTX4TDyRS0bGnJ_WnrkcAWavotHKfH0O-uwxgyA-R"
 
--- Lấy danh sách servers công khai (Roblox API v1). Hàm này trả về bảng server entries hoặc nil + err.
-local function fetchServerPage(placeId, cursor)
-    local url = ("https://games.roblox.com/v1/games/%s/servers/Public?sortOrder=Asc&limit=100%s")
-    local cursorParam = ""
-    if cursor and cursor ~= "" then
-        cursorParam = "&cursor=" .. HttpService:UrlEncode(cursor)
+--------------------------------------------------------------------
+-- Hàm gửi webhook
+--------------------------------------------------------------------
+local function sendDiscordWebhook(title, description)
+    local jobId = game.JobId or HttpService:GenerateGUID(false)
+    local placeId = game.PlaceId or 0
+    local link = "https://www.roblox.com/games/"..placeId.."/?gameInstanceId="..jobId
+    local payload = { username = "RareFinder", embeds = {{
+        title = title,
+        description = (description or "").."\n\n**JobId:** `"..jobId.."`\n[Join Server]("..link..")",
+        footer = { text = "Auto alert" },
+        timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ")
+    }} }
+    local body = HttpService:JSONEncode(payload)
+
+    if syn and syn.request then
+        syn.request({Url = WEBHOOK_URL, Method = "POST", Headers = {["Content-Type"]="application/json"}, Body=body})
+    elseif http_request then
+        http_request({Url = WEBHOOK_URL, Method = "POST", Headers = {["Content-Type"]="application/json"}, Body=body})
+    elseif request then
+        request({Url = WEBHOOK_URL, Method = "POST", Headers = {["Content-Type"]="application/json"}, Body=body})
+    else
+        pcall(function() HttpService:PostAsync(WEBHOOK_URL, body, Enum.HttpContentType.ApplicationJson) end)
     end
+end
+
+--------------------------------------------------------------------
+-- Danh sách vật phẩm hiếm cần gửi webhook
+--------------------------------------------------------------------
+local validItems = {
+    ["Rare Box"] = true,
+    ["Ultra Rare Box"] = true,
+    ["Rumble Fruit"] = true,
+    ["Magma Fruit"] = true,
+    ["Flare Fruit"] = true,
+    ["Gas Fruit"] = true,
+    ["Chilly Fruit"] = true,
+}
+
+--------------------------------------------------------------------
+-- HOP SERVER: tìm server có > MIN_PLAYERS_FOR_HOP rồi teleport
+--------------------------------------------------------------------
+local MIN_PLAYERS_FOR_HOP = 10  -- chỉ hop tới server có strictly hơn 10 người (>10). Nếu muốn >= 10 thì đổi > thành >= trong điều kiện.
+
+-- Lấy 1 trang server public (Roblox API v1)
+local function fetchServerPage(placeId, cursor)
+    local base = ("https://games.roblox.com/v1/games/%s/servers/Public?sortOrder=Asc&limit=100")
+    local url = string.format(base, tostring(placeId))
+    if cursor and cursor ~= "" then
+        url = url .. "&cursor=" .. HttpService:UrlEncode(cursor)
+    end
+
     local ok, res = pcall(function()
-        return HttpService:GetAsync(string.format(url, tostring(placeId), cursorParam))
+        return HttpService:GetAsync(url)
     end)
     if not ok then
         return nil, res
@@ -27,8 +74,7 @@ local function fetchServerPage(placeId, cursor)
     return data
 end
 
--- Tìm server phù hợp: playing (số người đang chơi) phải lớn hơn MIN_PLAYERS_FOR_HOP
--- Trả về serverId (id instance) nếu tìm thấy, hoặc nil nếu không
+-- Tìm server phù hợp: playing > MIN_PLAYERS_FOR_HOP và không phải server hiện tại
 local function findSuitableServer(placeId)
     local cursor = nil
     repeat
@@ -40,12 +86,9 @@ local function findSuitableServer(placeId)
 
         if page.data and type(page.data) == "table" then
             for _, server in ipairs(page.data) do
-                -- server structure thường có: id (string), playing (number), maxPlayers (number)
                 local playing = tonumber(server.playing) or 0
-                local serverId = server.id or server.id -- sometimes "id" or "id"
-                -- Điều kiện: phải có hơn MIN_PLAYERS_FOR_HOP người chơi và không đầy (optional)
+                local serverId = server.id or server.id -- fallback
                 if playing > MIN_PLAYERS_FOR_HOP then
-                    -- optional: skip if it's the same server as current
                     if tostring(serverId) ~= tostring(game.JobId) then
                         return serverId
                     end
@@ -53,13 +96,14 @@ local function findSuitableServer(placeId)
             end
         end
 
-        cursor = page.nextPageCursor or page.nextPageCursor -- tên trường có thể khác tùy response
+        -- trường nextPageCursor có thể tên khác; thử nhiều biến phổ biến
+        cursor = page.nextPageCursor or page.nextPageCursor or page.nextPageToken or page.next_cursor
     until not cursor or cursor == "" 
 
     return nil
 end
 
--- Hàm chính để hop: placeId có thể lấy từ game.PlaceId
+-- Hàm hop
 local function hopToServerWithMinPlayers()
     local placeId = tostring(game.PlaceId or error("No PlaceId"))
     local serverId = findSuitableServer(placeId)
@@ -68,24 +112,69 @@ local function hopToServerWithMinPlayers()
         return false
     end
 
-    -- Thực hiện teleport (gán localPlayer phù hợp với môi trường script)
-    local localPlayer = Players.LocalPlayer
-    if not localPlayer then
-        -- Nếu script chạy trên server-side, TeleportService:TeleportToPlaceInstance cần sử dụng một player target khác.
-        -- Ở client, dùng TeleportService:TeleportToPlaceInstance(placeId, serverId, localPlayer)
-        pcall(function()
-            TeleportService:TeleportToPlaceInstance(tonumber(placeId), serverId)
-        end)
-        print("[Hop] Đang teleport serverId:", serverId)
-        return true
-    else
-        pcall(function()
+    -- Thực hiện teleport
+    local success, err = pcall(function()
+        if localPlayer then
             TeleportService:TeleportToPlaceInstance(tonumber(placeId), serverId, localPlayer)
-        end)
-        print("[Hop] Đang teleport user " .. localPlayer.Name .. " tới server:", serverId)
-        return true
+        else
+            TeleportService:TeleportToPlaceInstance(tonumber(placeId), serverId)
+        end
+    end)
+    if not success then
+        warn("[Hop] Lỗi teleport:", err)
+        return false
+    end
+    print("[Hop] Đang teleport tới server:", serverId)
+    return true
+end
+
+-- Ví dụ: bạn có thể gọi hopToServerWithMinPlayers() khi muốn hop
+-- hopToServerWithMinPlayers()
+
+--------------------------------------------------------------------
+-- Hook vào hàm RareFound của script gốc
+--------------------------------------------------------------------
+if type(_G) == "table" then
+    local old = _G.RareFound
+    _G.RareFound = function(itemName, ...)
+        if itemName and validItems[tostring(itemName)] then
+            sendDiscordWebhook(
+                " Vật phẩm hiếm phát hiện!",
+                "Script gốc tìm thấy vật phẩm: **"..tostring(itemName).."**"
+            )
+
+            -- TÙY CHỌN: nếu muốn tự động hop khi tìm thấy vật phẩm hiếm,
+            -- bỏ comment dòng dưới đây:
+            -- spawn(function() wait(0.5); hopToServerWithMinPlayers() end)
+        end
+
+        -- Gọi lại hàm gốc nếu có
+        if type(old) == "function" then
+            return old(itemName, ...)
+        end
     end
 end
 
--- Usage example: gọi hopToServerWithMinPlayers() khi bạn muốn hop
--- hopToServerWithMinPlayers()
+--------------------------------------------------------------------
+-- Quét inventory của player khác
+--------------------------------------------------------------------
+spawn(function()
+    while true do
+        for _, plr in ipairs(Players:GetPlayers()) do
+            if plr ~= localPlayer then
+                local backpack = plr:FindFirstChild("Backpack")
+                if backpack then
+                    for _, item in ipairs(backpack:GetChildren()) do
+                        if validItems[item.Name] then
+                            sendDiscordWebhook(" Player Inventory", plr.Name.." có: "..item.Name)
+                            -- TÙY CHỌN: tự động hop khi phát hiện trong inventory
+                            -- spawn(function() wait(0.5); hopToServerWithMinPlayers() end)
+                        end
+                    end
+                end
+            end
+        end
+        wait(5) -- quét mỗi 5 giây để không spam
+    end
+end)
+print("[FindSeverRare_Discord.lua] Hook và quét inventory thành công.")
