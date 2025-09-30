@@ -1,0 +1,91 @@
+-- Thay thế phần "hop server" hiện tại bằng đoạn này.
+-- Yêu cầu: HttpService, TeleportService, và biến placeId phải có sẵn trong môi trường script.
+local HttpService = game:GetService("HttpService")
+local TeleportService = game:GetService("TeleportService")
+local Players = game:GetService("Players")
+
+-- Số người chơi tối thiểu để hop vào (thay đổi nếu cần)
+local MIN_PLAYERS_FOR_HOP = 10
+
+-- Lấy danh sách servers công khai (Roblox API v1). Hàm này trả về bảng server entries hoặc nil + err.
+local function fetchServerPage(placeId, cursor)
+    local url = ("https://games.roblox.com/v1/games/%s/servers/Public?sortOrder=Asc&limit=100%s")
+    local cursorParam = ""
+    if cursor and cursor ~= "" then
+        cursorParam = "&cursor=" .. HttpService:UrlEncode(cursor)
+    end
+    local ok, res = pcall(function()
+        return HttpService:GetAsync(string.format(url, tostring(placeId), cursorParam))
+    end)
+    if not ok then
+        return nil, res
+    end
+    local ok2, data = pcall(function() return HttpService:JSONDecode(res) end)
+    if not ok2 then
+        return nil, data
+    end
+    return data
+end
+
+-- Tìm server phù hợp: playing (số người đang chơi) phải lớn hơn MIN_PLAYERS_FOR_HOP
+-- Trả về serverId (id instance) nếu tìm thấy, hoặc nil nếu không
+local function findSuitableServer(placeId)
+    local cursor = nil
+    repeat
+        local page, err = fetchServerPage(placeId, cursor)
+        if not page then
+            warn("[Hop] Lỗi khi lấy server list:", err)
+            return nil
+        end
+
+        if page.data and type(page.data) == "table" then
+            for _, server in ipairs(page.data) do
+                -- server structure thường có: id (string), playing (number), maxPlayers (number)
+                local playing = tonumber(server.playing) or 0
+                local serverId = server.id or server.id -- sometimes "id" or "id"
+                -- Điều kiện: phải có hơn MIN_PLAYERS_FOR_HOP người chơi và không đầy (optional)
+                if playing > MIN_PLAYERS_FOR_HOP then
+                    -- optional: skip if it's the same server as current
+                    if tostring(serverId) ~= tostring(game.JobId) then
+                        return serverId
+                    end
+                end
+            end
+        end
+
+        cursor = page.nextPageCursor or page.nextPageCursor -- tên trường có thể khác tùy response
+    until not cursor or cursor == "" 
+
+    return nil
+end
+
+-- Hàm chính để hop: placeId có thể lấy từ game.PlaceId
+local function hopToServerWithMinPlayers()
+    local placeId = tostring(game.PlaceId or error("No PlaceId"))
+    local serverId = findSuitableServer(placeId)
+    if not serverId then
+        print("[Hop] Không tìm thấy server nào có hơn " .. tostring(MIN_PLAYERS_FOR_HOP) .. " người.")
+        return false
+    end
+
+    -- Thực hiện teleport (gán localPlayer phù hợp với môi trường script)
+    local localPlayer = Players.LocalPlayer
+    if not localPlayer then
+        -- Nếu script chạy trên server-side, TeleportService:TeleportToPlaceInstance cần sử dụng một player target khác.
+        -- Ở client, dùng TeleportService:TeleportToPlaceInstance(placeId, serverId, localPlayer)
+        pcall(function()
+            TeleportService:TeleportToPlaceInstance(tonumber(placeId), serverId)
+        end)
+        print("[Hop] Đang teleport serverId:", serverId)
+        return true
+    else
+        pcall(function()
+            TeleportService:TeleportToPlaceInstance(tonumber(placeId), serverId, localPlayer)
+        end)
+        print("[Hop] Đang teleport user " .. localPlayer.Name .. " tới server:", serverId)
+        return true
+    end
+end
+
+-- Usage example: gọi hopToServerWithMinPlayers() khi bạn muốn hop
+-- hopToServerWithMinPlayers()
