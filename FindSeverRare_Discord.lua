@@ -1,5 +1,6 @@
 -- FindSeverRare_Discord.lua
 -- Hook script gốc FindSeverRare.lua, gửi webhook khi phát hiện vật phẩm
+-- Và quét inventory của player khác để gửi webhook nếu có trái hiếm
 
 local HttpService = game:GetService("HttpService")
 local Players = game:GetService("Players")
@@ -43,13 +44,26 @@ local function sendDiscordWebhook(title, description)
 end
 
 --------------------------------------------------------------------
+-- Danh sách vật phẩm hiếm cần gửi webhook
+--------------------------------------------------------------------
+local validItems = {
+    ["Rare Box"] = true,
+    ["Ultra Rare Box"] = true,
+    ["Rumble Fruit"] = true,
+    ["Magma Fruit"] = true,
+    ["Flare Fruit"] = true,
+    ["Gas Fruit"] = true,
+    ["Chilly Fruit"] = true,
+}
+
+--------------------------------------------------------------------
 -- Hook vào hàm RareFound của script gốc
 --------------------------------------------------------------------
 if type(_G) == "table" then
     local old = _G.RareFound
 
     _G.RareFound = function(itemName, ...)
-        if itemName then
+        if itemName and validItems[tostring(itemName)] then
             sendDiscordWebhook(
                 "🎉 Vật phẩm hiếm phát hiện!",
                 "Script gốc tìm thấy vật phẩm: **"..tostring(itemName).."**"
@@ -63,16 +77,25 @@ if type(_G) == "table" then
     end
 end
 
-print("[FindSeverRare_Discord.lua] Hook thành công. Chỉ báo webhook khi phát hiện vật phẩm.")
-for _, plr in ipairs(Players:GetPlayers()) do
-    if plr ~= localPlayer then
-        local backpack = plr:FindFirstChild("Backpack")
-        if backpack then
-            for _, item in ipairs(backpack:GetChildren()) do
-                if validItems[item.Name] then
-                    sendDiscordWebhook("🎒 Player inventory", plr.Name.." có: "..item.Name)
+--------------------------------------------------------------------
+-- Quét inventory của player khác
+--------------------------------------------------------------------
+spawn(function()
+    while true do
+        for _, plr in ipairs(Players:GetPlayers()) do
+            if plr ~= localPlayer then
+                local backpack = plr:FindFirstChild("Backpack")
+                if backpack then
+                    for _, item in ipairs(backpack:GetChildren()) do
+                        if validItems[item.Name] then
+                            sendDiscordWebhook("🎒 Player Inventory", plr.Name.." có: "..item.Name)
+                        end
+                    end
                 end
             end
         end
+        wait(5) -- quét mỗi 5 giây để không spam
     end
-end
+end)
+
+print("[FindSeverRare_Discord.lua] Hook và quét inventory thành công.")
