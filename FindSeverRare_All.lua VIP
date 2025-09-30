@@ -1,0 +1,25 @@
+-- FindSeverRare_All.lua
+-- Tự động load cả 2 script: FindSeverRare và FindSeverRare_Discord
+
+local function safeLoad(url)
+    local ok, code = pcall(function()
+        return game:HttpGet(url)
+    end)
+    if ok and code then
+        local f, err = loadstring(code)
+        if f then
+            local ok2, err2 = pcall(f)
+            if not ok2 then warn("[Loader] Error running "..url, err2) end
+        else
+            warn("[Loader] loadstring error for "..url, err)
+        end
+    else
+        warn("[Loader] Cannot fetch "..url, code)
+    end
+end
+
+-- 🔹 Link script của bạn
+safeLoad("https://raw.githubusercontent.com/TommNger/MyHub.lua/main/FindSeverRare.lua")
+safeLoad("https://raw.githubusercontent.com/TommNger/MyHub.lua/main/FindSeverRare_Discord.lua")
+
+print("[FindSeverRare_All] Loaded both scripts!")
