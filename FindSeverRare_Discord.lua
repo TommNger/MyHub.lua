@@ -54,6 +54,9 @@ local validItems = {
     ["Flare Fruit"] = true,
     ["Gas Fruit"] = true,
     ["Chilly Fruit"] = true,
+    ["Phoenix Fruit"] = true,   -- thêm
+    ["Dark Fruit"] = true,      -- thêm
+    ["Quake Fruit"] = true,     -- thêm
 }
 
 --------------------------------------------------------------------
@@ -64,8 +67,19 @@ if type(_G) == "table" then
 
     _G.RareFound = function(itemName, ...)
         if itemName and validItems[tostring(itemName)] then
+            local emoji = "🎉" -- mặc định
+
+            -- Gán emoji đặc biệt cho các trái mới
+            if itemName == "Phoenix Fruit" then
+                emoji = "🔥"
+            elseif itemName == "Dark Fruit" then
+                emoji = "🌑"
+            elseif itemName == "Quake Fruit" then
+                emoji = "🌋"
+            end
+
             sendDiscordWebhook(
-                "🎉 Vật phẩm hiếm phát hiện!",
+                emoji.." Vật phẩm hiếm phát hiện!",
                 "Script gốc tìm thấy vật phẩm: **"..tostring(itemName).."**"
             )
         end
@@ -88,7 +102,15 @@ spawn(function()
                 if backpack then
                     for _, item in ipairs(backpack:GetChildren()) do
                         if validItems[item.Name] then
-                            sendDiscordWebhook("🎒 Player Inventory", plr.Name.." có: "..item.Name)
+                            local emoji = "🎒" -- mặc định
+                            if item.Name == "Phoenix Fruit" then
+                                emoji = "🔥"
+                            elseif item.Name == "Dark Fruit" then
+                                emoji = "🌑"
+                            elseif item.Name == "Quake Fruit" then
+                                emoji = "🌋"
+                            end
+                            sendDiscordWebhook(emoji.." Player Inventory", plr.Name.." có: "..item.Name)
                         end
                     end
                 end
